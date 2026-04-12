@@ -38,17 +38,19 @@ def create_vcard(df):
     for _, row in df.iterrows():
         vcard_content += "BEGIN:VCARD\n"
         vcard_content += "VERSION:3.0\n"
-        vcard_content += f"FN:{row['Title']}\n"  # Full Name
+        vcard_content += f"FN:{row['Title']}\n"
         if pd.notnull(row['Username']) and row['Username'] != "":
             vcard_content += f"EMAIL:{row['Username']}\n"
         
-        # Telefonnummern aus den Notes extrahieren
         if pd.notnull(row['Notes']):
             notes = row['Notes'].split(" | ")
             for note in notes:
                 if ":" in note:
                     typ, num = note.split(":", 1)
-                    vcard_content += f"TEL;TYPE={typ.strip().upper()}:{num.strip()}\n"
+                    t_upper = typ.strip().upper()
+                    # Mapping für Apple-Kompatibilität
+                    vcf_typ = "CELL" if t_upper == "HANDY" else "WORK" if t_upper == "BÜRO" else "HOME"
+                    vcard_content += f"TEL;TYPE={vcf_typ}:{num.strip()}\n"
         
         vcard_content += "END:VCARD\n"
     return vcard_content
@@ -62,20 +64,24 @@ st.title("🔐 Kontakt-Manager")
 with st.form("kontakt_form", clear_on_submit=True):
     st.subheader("Neuen Kontakt hinzufügen")
     name = st.text_input("Name / Firma")
-    email = st.text_input("E-Mail")
+    email = st.text_input("E-Mail Adresse")
     
     st.write("---")
     st.write("📞 **Telefonnummern**")
+    
+    # Auswahl jetzt mit deinen deutschen Begriffen
+    optionen = ["Handy", "Büro", "Privat"]
+    
     c1, c2 = st.columns([1, 2])
-    t1 = c1.selectbox("Typ 1", ["HANDY", "WORK", "HOME"], key="t1")
+    t1 = c1.selectbox("Typ 1", optionen, key="t1")
     n1 = c2.text_input("Nummer 1", key="n1")
     
     c3, c4 = st.columns([1, 2])
-    t2 = c3.selectbox("Typ 2", ["WORK", "HANDY", "HOME"], key="t2")
+    t2 = c3.selectbox("Typ 2", ["Büro", "Handy", "Privat"], key="t2")
     n2 = c4.text_input("Nummer 2", key="n2")
     
     c5, c6 = st.columns([1, 2])
-    t3 = c5.selectbox("Typ 3", ["HOME", "HANDY", "WORK"], key="t3")
+    t3 = c5.selectbox("Typ 3", ["Privat", "Handy", "Büro"], key="t3")
     n3 = c6.text_input("Nummer 3", key="n3")
 
     if st.form_submit_button("Dauerhaft speichern"):
@@ -100,9 +106,7 @@ st.dataframe(df, use_container_width=True)
 
 if not df.empty:
     col_dl1, col_dl2 = st.columns(2)
-    
     with col_dl1:
-        # vCard Export (Das Beste fürs iPhone)
         vcf_data = create_vcard(df)
         st.download_button(
             label="📲 iPhone Kontakte (vcf)",
@@ -110,13 +114,10 @@ if not df.empty:
             file_name="Firma_Schuessler.vcf",
             mime="text/vcard"
         )
-    
     with col_dl2:
-        # CSV Export (Backup)
         csv = df.to_csv(index=False).encode('utf-8')
         st.download_button("📥 Backup (csv)", csv, "kontakte.csv", "text/csv")
     
-    # --- LÖSCH-BEREICH ---
     st.write("---")
     with st.expander("⚠️ Admin Bereich"):
         pw = st.text_input("Passwort", type="password")
