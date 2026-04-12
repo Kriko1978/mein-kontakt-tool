@@ -1,39 +1,59 @@
 import streamlit as st
+from streamlit_gsheets import GSheetsConnection
 import pandas as pd
 
-st.set_page_config(page_title="Kontakt Cloud", page_icon="🔐")
+# Seite konfigurieren
+st.set_page_config(page_title="Kontakt-Cloud", page_icon="🔐")
 
-# HIER DEINEN LINK EINTRAGEN (der mit /export?format=csv am Ende)
-SHEET_URL = "DEIN_LINK_ZUM_EXPORT_CSV"
+st.title("🔐 Mein Kontakt-Manager (Cloud)")
 
-st.title("🔐 Mein Kontakt-Tresor")
+# Verbindung zu Google Sheets definieren
+conn = st.connection("gsheets", type=GSheetsConnection)
 
-# Funktion zum Laden der Daten
-def load_data():
-    try:
-        # Erlaubt das Lesen direkt aus der Google Tabelle
-        return pd.read_csv(SHEET_URL)
-    except:
-        return pd.DataFrame(columns=["Title", "URL", "Username", "Password", "Notes"])
+# Daten aus der Cloud laden (ttl=0 damit es sofort aktualisiert)
+try:
+    df = conn.read(ttl=0)
+except:
+    df = pd.DataFrame(columns=["Title", "URL", "Username", "Password", "Notes"])
 
-df = load_data()
-
-# Eingabe-Maske
-with st.form("add_form", clear_on_submit=True):
+# Eingabe-Formular
+with st.form("new_contact", clear_on_submit=True):
+    st.subheader("Neuen Eintrag erstellen")
     name = st.text_input("Name / Firma")
-    email = st.text_input("E-Mail")
-    phone = st.text_input("Telefon")
-    submitted = st.form_submit_button("Hinzufügen")
+    email = st.text_input("E-Mail Adresse")
+    phone = st.text_input("Telefonnummer")
     
-    if submitted and name:
-        st.success(f"{name} wurde lokal hinzugefügt. Kopiere die CSV unten, um deine Google Tabelle manuell zu füllen, oder nutze den Download!")
-        # Hier fügen wir es dem aktuellen DF hinzu
-        new_line = pd.DataFrame([{"Title": name, "URL": "", "Username": email, "Password": "", "Notes": phone}])
-        df = pd.concat([df, new_line], ignore_index=True)
+    if st.form_submit_button("Direkt in Cloud speichern"):
+        if name:
+            # Neue Zeile vorbereiten
+            new_data = pd.DataFrame([{
+                "Title": name,
+                "URL": "",
+                "Username": email,
+                "Password": "",
+                "Notes": phone
+            }])
+            # Bestehende Daten mit neuen kombinieren
+            updated_df = pd.concat([df, new_data], ignore_index=True)
+            
+            # DER MAGISCHE BEFEHL: Schreibt direkt in die Google Tabelle
+            conn.update(data=updated_df)
+            
+            st.success(f"✅ {name} wurde in Google Sheets gespeichert!")
+            st.rerun()
+        else:
+            st.error("Bitte einen Namen eingeben!")
 
-# Tabelle anzeigen
-st.dataframe(df, use_container_width=True)
+st.divider()
 
-# Export-Bereich
-csv = df.to_csv(index=False).encode('utf-8')
-st.download_button("📥 CSV Datei herunterladen", data=csv, file_name="kontakte.csv")
+# Anzeige der Cloud-Daten
+st.subheader("Deine gespeicherten Kontakte")
+if not df.empty:
+    # Nur Zeilen anzeigen, die nicht komplett leer sind
+    st.dataframe(df.dropna(how="all"), use_container_width=True)
+    
+    # Export-Button für Apple
+    csv = df.to_csv(index=False).encode('utf-8')
+    st.download_button("📥 CSV für Apple herunterladen", csv, "kontakte.csv", "text/csv")
+else:
+    st.info("Noch keine Daten in der Cloud gefunden.")
