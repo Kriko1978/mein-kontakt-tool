@@ -1,59 +1,54 @@
 import streamlit as st
-from streamlit_gsheets import GSheetsConnection
 import pandas as pd
 
-# Seite konfigurieren
-st.set_page_config(page_title="Kontakt-Cloud", page_icon="🔐")
+# Seite einrichten
+st.set_page_config(page_title="Kontakt-Tresor", page_icon="🔐")
 
-st.title("🔐 Mein Kontakt-Manager (Cloud)")
+st.title("🔐 Mein Kontakt-Manager")
 
-# Verbindung zu Google Sheets definieren
-conn = st.connection("gsheets", type=GSheetsConnection)
-
-# Daten aus der Cloud laden (ttl=0 damit es sofort aktualisiert)
-try:
-    df = conn.read(ttl=0)
-except:
-    df = pd.DataFrame(columns=["Title", "URL", "Username", "Password", "Notes"])
+# Initialisiere den Speicher im Browser-Sitzungsspeicher
+if 'contacts' not in st.session_state:
+    st.session_state.contacts = pd.DataFrame(columns=["Title", "URL", "Username", "Password", "Notes"])
 
 # Eingabe-Formular
-with st.form("new_contact", clear_on_submit=True):
-    st.subheader("Neuen Eintrag erstellen")
+with st.form("kontakt_form", clear_on_submit=True):
     name = st.text_input("Name / Firma")
-    email = st.text_input("E-Mail Adresse")
+    email = st.text_input("E-Mail")
     phone = st.text_input("Telefonnummer")
     
-    if st.form_submit_button("Direkt in Cloud speichern"):
+    if st.form_submit_button("Hinzufügen"):
         if name:
-            # Neue Zeile vorbereiten
-            new_data = pd.DataFrame([{
+            new_entry = pd.DataFrame([{
                 "Title": name,
                 "URL": "",
                 "Username": email,
                 "Password": "",
                 "Notes": phone
             }])
-            # Bestehende Daten mit neuen kombinieren
-            updated_df = pd.concat([df, new_data], ignore_index=True)
-            
-            # DER MAGISCHE BEFEHL: Schreibt direkt in die Google Tabelle
-            conn.update(data=updated_df)
-            
-            st.success(f"✅ {name} wurde in Google Sheets gespeichert!")
-            st.rerun()
+            st.session_state.contacts = pd.concat([st.session_state.contacts, new_entry], ignore_index=True)
+            st.success(f"{name} hinzugefügt!")
         else:
-            st.error("Bitte einen Namen eingeben!")
+            st.warning("Bitte Namen eingeben.")
 
-st.divider()
-
-# Anzeige der Cloud-Daten
-st.subheader("Deine gespeicherten Kontakte")
-if not df.empty:
-    # Nur Zeilen anzeigen, die nicht komplett leer sind
-    st.dataframe(df.dropna(how="all"), use_container_width=True)
+# Anzeige der Tabelle
+st.subheader("Deine Liste")
+if not st.session_state.contacts.empty:
+    # Tabelle anzeigen
+    st.dataframe(st.session_state.contacts, use_container_width=True)
     
-    # Export-Button für Apple
-    csv = df.to_csv(index=False).encode('utf-8')
-    st.download_button("📥 CSV für Apple herunterladen", csv, "kontakte.csv", "text/csv")
+    # Der wichtigste Teil: Der Export
+    csv = st.session_state.contacts.to_csv(index=False).encode('utf-8')
+    st.download_button(
+        label="📥 CSV für Apple herunterladen",
+        data=csv,
+        file_name="kontakte_export.csv",
+        mime="text/csv",
+    )
+    
+    if st.button("Liste leeren"):
+        st.session_state.contacts = pd.DataFrame(columns=["Title", "URL", "Username", "Password", "Notes"])
+        st.rerun()
 else:
-    st.info("Noch keine Daten in der Cloud gefunden.")
+    st.info("Noch keine Kontakte gespeichert.")
+
+st.info("Tipp: Lade die CSV regelmäßig herunter, um deine Daten lokal zu sichern!")
