@@ -5,136 +5,145 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Kontakt-Manager Pro</title>
     <style>
-        body { font-family: 'Segoe UI', sans-serif; background: #f4f7f6; padding: 20px; display: flex; flex-direction: column; align-items: center; }
-        .container { background: white; padding: 25px; border-radius: 15px; box-shadow: 0 5px 15px rgba(0,0,0,0.1); width: 100%; max-width: 600px; margin-bottom: 20px; }
-        h2 { margin-top: 0; color: #333; }
-        input, select { width: 100%; padding: 10px; margin: 5px 0 15px 0; border: 1px solid #ddd; border-radius: 8px; box-sizing: border-box; }
-        .btn { padding: 12px 20px; border: none; border-radius: 8px; cursor: pointer; font-weight: bold; width: 100%; margin-bottom: 10px; }
-        .btn-add { background: #28a745; color: white; }
-        .btn-download { background: #007bff; color: white; }
+        :root { --primary: #007aff; --success: #34c759; --danger: #ff3b30; --bg: #f2f2f7; }
+        body { font-family: -apple-system, sans-serif; background: var(--bg); margin: 0; padding: 20px; display: flex; flex-direction: column; align-items: center; }
+        .card { background: white; padding: 20px; border-radius: 12px; shadow: 0 4px 12px rgba(0,0,0,0.1); width: 100%; max-width: 500px; margin-bottom: 20px; box-sizing: border-box; }
+        h2 { margin-top: 0; font-size: 1.2rem; color: #1c1c1e; }
+        label { display: block; margin-bottom: 4px; font-size: 0.8rem; font-weight: 600; color: #8e8e93; }
+        input, select { width: 100%; padding: 12px; margin-bottom: 15px; border: 1px solid #d1d1d6; border-radius: 8px; font-size: 1rem; box-sizing: border-box; }
+        .btn { width: 100%; padding: 14px; border: none; border-radius: 10px; font-weight: 600; font-size: 1rem; cursor: pointer; transition: opacity 0.2s; }
+        .btn:active { opacity: 0.7; }
+        .btn-add { background: var(--primary); color: white; }
+        .btn-save { background: var(--success); color: white; margin-top: 10px; }
         
-        table { width: 100%; border-collapse: collapse; margin-top: 20px; background: white; border-radius: 8px; overflow: hidden; }
-        th, td { padding: 12px; text-align: left; border-bottom: 1px solid #eee; font-size: 0.9em; }
-        th { background: #f8f9fa; }
-        .btn-delete { background: #dc3545; color: white; padding: 5px 10px; border-radius: 5px; font-size: 0.8em; border: none; cursor: pointer; }
-        .btn-edit { background: #ffc107; color: black; padding: 5px 10px; border-radius: 5px; font-size: 0.8em; border: none; cursor: pointer; margin-right: 5px; }
+        table { width: 100%; border-collapse: collapse; margin-top: 10px; }
+        th { text-align: left; font-size: 0.75rem; text-transform: uppercase; color: #8e8e93; padding: 8px 4px; }
+        td { padding: 12px 4px; border-top: 1px solid #e5e5ea; font-size: 0.9rem; }
+        .actions { display: flex; gap: 8px; }
+        .action-btn { border: none; background: none; font-size: 1.1rem; cursor: pointer; padding: 5px; }
     </style>
 </head>
 <body>
 
-<div class="container">
-    <h2>Neuen Kontakt hinzufügen</h2>
+<div class="card">
+    <h2>Kontakt hinzufügen</h2>
     <input type="hidden" id="edit-index" value="-1">
+    
     <label>Name / Firma</label>
-    <input type="text" id="title" placeholder="Max Mustermann">
-    <label>E-Mail</label>
+    <input type="text" id="title" placeholder="z.B. Max Mustermann">
+    
+    <label>E-Mail Adresse</label>
     <input type="email" id="email" placeholder="mail@beispiel.de">
-    <label>Typ & Telefon</label>
-    <div style="display: flex; gap: 10px;">
-        <select id="type" style="width: 40%;">
+    
+    <label>Telefonnummer</label>
+    <div style="display: flex; gap: 8px;">
+        <select id="type" style="width: 120px;">
             <option>Privat</option>
-            <option>Geschäftlich</option>
+            <option>Geschäft</option>
             <option>Mobil</option>
         </select>
-        <input type="text" id="phone" placeholder="+49 123 456">
+        <input type="text" id="phone" placeholder="+49...">
     </div>
-    <button class="btn btn-add" id="add-btn" onclick="addEntry()">Hinzufügen</button>
+    
+    <button class="btn btn-add" id="main-btn" onclick="addContact()">Hinzufügen</button>
 </div>
 
-<div class="container">
-    <h2>Gespeicherte Kontakte</h2>
-    <table id="contact-table">
+<div class="card">
+    <h2>Liste der Einträge</h2>
+    <table id="contactTable">
         <thead>
             <tr>
-                <th>Name</th>
-                <th>E-Mail</th>
+                <th>Kontakt</th>
                 <th>Info</th>
-                <th>Aktion</th>
+                <th></th>
             </tr>
         </thead>
-        <tbody id="table-body"></tbody>
+        <tbody id="tableBody"></tbody>
     </table>
-    <br>
-    <button class="btn btn-download" onclick="downloadFullCSV()">Gesamte Liste als CSV exportieren</button>
+    <button class="btn btn-save" onclick="exportCSV()">Als große CSV exportieren</button>
 </div>
 
 <script>
     let contacts = [];
 
-    function addEntry() {
+    function addContact() {
         const title = document.getElementById('title').value;
         const email = document.getElementById('email').value;
         const type = document.getElementById('type').value;
         const phone = document.getElementById('phone').value;
-        const editIndex = parseInt(document.getElementById('edit-index').value);
+        const editIdx = parseInt(document.getElementById('edit-index').value);
 
-        if (!title) return alert("Bitte mindestens einen Namen eingeben!");
+        if(!title) return alert("Bitte Namen eingeben!");
 
-        const newContact = { title, email, type, phone };
+        const contactObj = { title, email, type, phone };
 
-        if (editIndex > -1) {
-            contacts[editIndex] = newContact;
-            document.getElementById('add-btn').innerText = "Hinzufügen";
+        if(editIdx > -1) {
+            contacts[editIdx] = contactObj;
+            document.getElementById('main-btn').innerText = "Hinzufügen";
             document.getElementById('edit-index').value = "-1";
         } else {
-            contacts.push(newContact);
+            contacts.push(contactObj);
         }
 
-        clearInputs();
-        renderTable();
+        resetFields();
+        updateTable();
     }
 
-    function renderTable() {
-        const tbody = document.getElementById('table-body');
-        tbody.innerHTML = "";
-        contacts.forEach((c, index) => {
-            tbody.innerHTML += `
-                <tr>
-                    <td>${c.title}</td>
-                    <td>${c.email}</td>
-                    <td>${c.type}: ${c.phone}</td>
-                    <td>
-                        <button class="btn-edit" onclick="editEntry(${index})">✎</button>
-                        <button class="btn-delete" onclick="deleteEntry(${index})">X</button>
-                    </td>
-                </tr>`;
+    function updateTable() {
+        const body = document.getElementById('tableBody');
+        body.innerHTML = "";
+        contacts.forEach((c, i) => {
+            body.innerHTML += `<tr>
+                <td><strong>${c.title}</strong><br><small>${c.email}</small></td>
+                <td>${c.type}<br>${c.phone}</td>
+                <td class="actions">
+                    <button class="action-btn" onclick="editContact(${i})">✏️</button>
+                    <button class="action-btn" onclick="deleteContact(${i})">🗑️</button>
+                </td>
+            </tr>`;
         });
     }
 
-    function deleteEntry(index) {
-        contacts.splice(index, 1);
-        renderTable();
-    }
-
-    function editEntry(index) {
-        const c = contacts[index];
+    function editContact(i) {
+        const c = contacts[i];
         document.getElementById('title').value = c.title;
         document.getElementById('email').value = c.email;
         document.getElementById('type').value = c.type;
         document.getElementById('phone').value = c.phone;
-        document.getElementById('edit-index').value = index;
-        document.getElementById('add-btn').innerText = "Änderung speichern";
+        document.getElementById('edit-index').value = i;
+        document.getElementById('main-btn').innerText = "Änderung speichern";
+        window.scrollTo(0,0);
     }
 
-    function clearInputs() {
+    function deleteContact(i) {
+        if(confirm("Löschen?")) {
+            contacts.splice(i, 1);
+            updateTable();
+        }
+    }
+
+    function resetFields() {
         document.getElementById('title').value = "";
         document.getElementById('email').value = "";
         document.getElementById('phone').value = "";
     }
 
-    function downloadFullCSV() {
-        if (contacts.length === 0) return alert("Die Liste ist leer!");
+    function exportCSV() {
+        if(contacts.length === 0) return alert("Liste ist leer!");
         
-        let csvContent = "Title,URL,Username,Password,Notes\n";
+        let csv = "Title,URL,Username,Password,Notes\n";
         contacts.forEach(c => {
-            const notes = `Typ: ${c.type} | Tel: ${c.phone}`;
-            csvContent += `"${c.title}",,"${c.email}",,"${notes}"\n`;
+            const note = `${c.type}: ${c.phone}`;
+            csv += `"${c.title}",,"${c.email}",,"${note}"\n`;
         });
 
-        const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-        const link = document.createElement("a");
-        link.href = URL.createObjectURL(blob);
-        link.download = "kontakte_liste.csv";
-        link.click();
+        const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+        const a = document.createElement("a");
+        a.href = URL.createObjectURL(blob);
+        a.download = "meine_kontakte.csv";
+        a.click();
     }
-</script
+</script>
+
+</body>
+</html>
