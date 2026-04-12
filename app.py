@@ -19,12 +19,17 @@ except Exception as e:
 
 # --- FUNKTIONEN ---
 def load_data_from_github():
+    spalten = ["Name", "Email", "Handy", "Büro", "Privat"]
     try:
         content = repo.get_contents(FILE_PATH)
         df = pd.read_csv(io.StringIO(content.decoded_content.decode('utf-8')))
-        return df, content.sha
+        # Sicherstellen, dass alle Spalten existieren
+        for s in spalten:
+            if s not in df.columns:
+                df[s] = ""
+        return df[spalten], content.sha
     except:
-        return pd.DataFrame(columns=["Title", "Username", "Notes"]), None
+        return pd.DataFrame(columns=spalten), None
 
 def save_to_github(df, sha, message="Update"):
     csv_string = df.to_csv(index=False)
@@ -38,19 +43,17 @@ def create_vcard(df):
     for _, row in df.iterrows():
         vcard_content += "BEGIN:VCARD\n"
         vcard_content += "VERSION:3.0\n"
-        vcard_content += f"FN:{row['Title']}\n"
-        if pd.notnull(row['Username']) and row['Username'] != "":
-            vcard_content += f"EMAIL:{row['Username']}\n"
+        vcard_content += f"FN:{row['Name']}\n"
+        if pd.notnull(row['Email']) and str(row['Email']).strip() != "":
+            vcard_content += f"EMAIL:{row['Email']}\n"
         
-        if pd.notnull(row['Notes']):
-            notes = row['Notes'].split(" | ")
-            for note in notes:
-                if ":" in note:
-                    typ, num = note.split(":", 1)
-                    t_upper = typ.strip().upper()
-                    # Mapping für Apple-Kompatibilität
-                    vcf_typ = "CELL" if t_upper == "HANDY" else "WORK" if t_upper == "BÜRO" else "HOME"
-                    vcard_content += f"TEL;TYPE={vcf_typ}:{num.strip()}\n"
+        # Telefonnummern einzeln zuordnen
+        if pd.notnull(row['Handy']) and str(row['Handy']).strip() != "":
+            vcard_content += f"TEL;TYPE=CELL:{row['Handy']}\n"
+        if pd.notnull(row['Büro']) and str(row['Büro']).strip() != "":
+            vcard_content += f"TEL;TYPE=WORK:{row['Büro']}\n"
+        if pd.notnull(row['Privat']) and str(row['Privat']).strip() != "":
+            vcard_content += f"TEL;TYPE=HOME:{row['Privat']}\n"
         
         vcard_content += "END:VCARD\n"
     return vcard_content
@@ -69,38 +72,31 @@ with st.form("kontakt_form", clear_on_submit=True):
     st.write("---")
     st.write("📞 **Telefonnummern**")
     
-    # Auswahl jetzt mit deinen deutschen Begriffen
-    optionen = ["Handy", "Büro", "Privat"]
-    
-    c1, c2 = st.columns([1, 2])
-    t1 = c1.selectbox("Typ 1", optionen, key="t1")
-    n1 = c2.text_input("Nummer 1", key="n1")
-    
-    c3, c4 = st.columns([1, 2])
-    t2 = c3.selectbox("Typ 2", ["Büro", "Handy", "Privat"], key="t2")
-    n2 = c4.text_input("Nummer 2", key="n2")
-    
-    c5, c6 = st.columns([1, 2])
-    t3 = c5.selectbox("Typ 3", ["Privat", "Handy", "Büro"], key="t3")
-    n3 = c6.text_input("Nummer 3", key="n3")
+    c1, c2, c3 = st.columns(3)
+    num_handy = c1.text_input("Handy", placeholder="0170...")
+    num_buero = c2.text_input("Büro", placeholder="030...")
+    num_privat = c3.text_input("Privat", placeholder="0123...")
 
     if st.form_submit_button("Dauerhaft speichern"):
         if name:
-            phones = []
-            if n1: phones.append(f"{t1}: {n1}")
-            if n2: phones.append(f"{t2}: {n2}")
-            if n3: phones.append(f"{t3}: {n3}")
-            full_notes = " | ".join(phones)
+            new_entry = pd.DataFrame([{
+                "Name": name, 
+                "Email": email, 
+                "Handy": num_handy,
+                "Büro": num_buero,
+                "Privat": num_privat
+            }])
             
-            new_entry = pd.DataFrame([{"Title": name, "Username": email, "Notes": full_notes}])
             updated_df = pd.concat([df, new_entry], ignore_index=True)
             save_to_github(updated_df, file_sha, f"Hinzugefügt: {name}")
-            st.success("✅ Gespeichert!")
+            st.success(f"✅ {name} wurde gespeichert!")
             st.rerun()
+        else:
+            st.error("Bitte einen Namen eingeben!")
 
 st.divider()
 
-# --- ANZEIGE ---
+# --- ANZEIGE DER LISTE ---
 st.subheader("📁 Kontakte Firma Schüßler")
 st.dataframe(df, use_container_width=True)
 
@@ -123,7 +119,14 @@ if not df.empty:
         pw = st.text_input("Passwort", type="password")
         if pw == "erkenschwick":
             if st.button("🚨 ALLES LÖSCHEN"):
-                save_to_github(pd.DataFrame(columns=["Title", "Username", "Notes"]), file_sha, "Geleert")
+                save_to_github(pd.DataFrame(columns=["Name", "Email", "Handy", "Büro", "Privat"]), file_sha, "Geleert")
+                st.rerun()
+            
+            st.write("Einzelnen Kontakt löschen:")
+            name_to_del = st.selectbox("Kontakt wählen", ["---"] + df["Name"].tolist())
+            if name_to_del != "---" and st.button(f"{name_to_del} löschen"):
+                updated_df = df[df["Name"] != name_to_del]
+                save_to_github(updated_df, file_sha, f"Gelöscht: {name_to_del}")
                 st.rerun()
 else:
     st.info("Liste ist leer.")
