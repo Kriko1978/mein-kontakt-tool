@@ -3,72 +3,138 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Kontakt-CSV Generator</title>
+    <title>Kontakt-Manager Pro</title>
     <style>
-        body { font-family: 'Segoe UI', sans-serif; padding: 20px; background: #f0f2f5; display: flex; justify-content: center; }
-        .container { background: white; padding: 25px; border-radius: 15px; box-shadow: 0 10px 25px rgba(0,0,0,0.1); width: 100%; max-width: 400px; }
-        h2 { color: #1c1e21; text-align: center; margin-bottom: 20px; }
-        label { display: block; margin-bottom: 5px; font-weight: 600; font-size: 0.85em; color: #4b4f56; }
-        input, select { display: block; width: 100%; margin-bottom: 15px; padding: 12px; border: 1px solid #dddfe2; border-radius: 8px; box-sizing: border-box; font-size: 1em; }
-        button { background: #0084ff; color: white; border: none; padding: 14px; border-radius: 8px; cursor: pointer; width: 100%; font-size: 16px; font-weight: bold; transition: background 0.2s; }
-        button:hover { background: #0073e6; }
-        .footer-note { font-size: 0.75em; color: #90949c; text-align: center; margin-top: 20px; }
+        body { font-family: 'Segoe UI', sans-serif; background: #f4f7f6; padding: 20px; display: flex; flex-direction: column; align-items: center; }
+        .container { background: white; padding: 25px; border-radius: 15px; box-shadow: 0 5px 15px rgba(0,0,0,0.1); width: 100%; max-width: 600px; margin-bottom: 20px; }
+        h2 { margin-top: 0; color: #333; }
+        input, select { width: 100%; padding: 10px; margin: 5px 0 15px 0; border: 1px solid #ddd; border-radius: 8px; box-sizing: border-box; }
+        .btn { padding: 12px 20px; border: none; border-radius: 8px; cursor: pointer; font-weight: bold; width: 100%; margin-bottom: 10px; }
+        .btn-add { background: #28a745; color: white; }
+        .btn-download { background: #007bff; color: white; }
+        
+        table { width: 100%; border-collapse: collapse; margin-top: 20px; background: white; border-radius: 8px; overflow: hidden; }
+        th, td { padding: 12px; text-align: left; border-bottom: 1px solid #eee; font-size: 0.9em; }
+        th { background: #f8f9fa; }
+        .btn-delete { background: #dc3545; color: white; padding: 5px 10px; border-radius: 5px; font-size: 0.8em; border: none; cursor: pointer; }
+        .btn-edit { background: #ffc107; color: black; padding: 5px 10px; border-radius: 5px; font-size: 0.8em; border: none; cursor: pointer; margin-right: 5px; }
     </style>
 </head>
 <body>
-    <div class="container">
-        <h2>Kontakt erstellen</h2>
-        
-        <label>Name / Firma</label>
-        <input type="text" id="title" placeholder="z.B. Max Mustermann">
 
-        <label>E-Mail Adresse</label>
-        <input type="email" id="email" placeholder="name@beispiel.de">
-
-        <label>Nummer Typ</label>
-        <select id="type">
-            <option value="Privat">Privat</option>
-            <option value="Geschäftlich">Geschäftlich</option>
-            <option value="Mobil">Mobil</option>
+<div class="container">
+    <h2>Neuen Kontakt hinzufügen</h2>
+    <input type="hidden" id="edit-index" value="-1">
+    <label>Name / Firma</label>
+    <input type="text" id="title" placeholder="Max Mustermann">
+    <label>E-Mail</label>
+    <input type="email" id="email" placeholder="mail@beispiel.de">
+    <label>Typ & Telefon</label>
+    <div style="display: flex; gap: 10px;">
+        <select id="type" style="width: 40%;">
+            <option>Privat</option>
+            <option>Geschäftlich</option>
+            <option>Mobil</option>
         </select>
-
-        <label>Telefonnummer</label>
-        <input type="text" id="phone" placeholder="+49 123 456789">
-
-        <label>Passwort (optional)</label>
-        <input type="password" id="pass" placeholder="Passwort eingeben">
-
-        <button onclick="saveToCSV()">CSV Datei speichern</button>
-        
-        <p class="footer-note">Info: Typ und Nummer werden im Notizfeld gespeichert.</p>
+        <input type="text" id="phone" placeholder="+49 123 456">
     </div>
+    <button class="btn btn-add" id="add-btn" onclick="addEntry()">Hinzufügen</button>
+</div>
 
-    <script>
-        function saveToCSV() {
-            const title = document.getElementById('title').value || "Unbenannt";
-            const email = document.getElementById('email').value;
-            const type = document.getElementById('type').value;
-            const phone = document.getElementById('phone').value;
-            const pass = document.getElementById('pass').value;
+<div class="container">
+    <h2>Gespeicherte Kontakte</h2>
+    <table id="contact-table">
+        <thead>
+            <tr>
+                <th>Name</th>
+                <th>E-Mail</th>
+                <th>Info</th>
+                <th>Aktion</th>
+            </tr>
+        </thead>
+        <tbody id="table-body"></tbody>
+    </table>
+    <br>
+    <button class="btn btn-download" onclick="downloadFullCSV()">Gesamte Liste als CSV exportieren</button>
+</div>
 
-            // CSV Header: Standard für Passwort-Apps
-            const header = "Title,URL,Username,Password,Notes\n";
-            
-            // Wir kombinieren Typ und Nummer für das Notizfeld
-            const notes = `Typ: ${type} | Tel: ${phone}`;
-            
-            // Zeile zusammenbauen (Anführungszeichen verhindern Fehler bei Kommas im Text)
-            const row = `"${title}",,"${email}","${pass}","${notes}"`;
+<script>
+    let contacts = [];
 
-            const csvContent = header + row;
+    function addEntry() {
+        const title = document.getElementById('title').value;
+        const email = document.getElementById('email').value;
+        const type = document.getElementById('type').value;
+        const phone = document.getElementById('phone').value;
+        const editIndex = parseInt(document.getElementById('edit-index').value);
 
-            // Datei-Download auslösen
-            const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-            const link = document.createElement("a");
-            link.href = URL.createObjectURL(blob);
-            link.download = `${title.replace(/\s+/g, '_')}_kontakt.csv`;
-            link.click();
+        if (!title) return alert("Bitte mindestens einen Namen eingeben!");
+
+        const newContact = { title, email, type, phone };
+
+        if (editIndex > -1) {
+            contacts[editIndex] = newContact;
+            document.getElementById('add-btn').innerText = "Hinzufügen";
+            document.getElementById('edit-index').value = "-1";
+        } else {
+            contacts.push(newContact);
         }
-    </script>
-</body>
-</html>
+
+        clearInputs();
+        renderTable();
+    }
+
+    function renderTable() {
+        const tbody = document.getElementById('table-body');
+        tbody.innerHTML = "";
+        contacts.forEach((c, index) => {
+            tbody.innerHTML += `
+                <tr>
+                    <td>${c.title}</td>
+                    <td>${c.email}</td>
+                    <td>${c.type}: ${c.phone}</td>
+                    <td>
+                        <button class="btn-edit" onclick="editEntry(${index})">✎</button>
+                        <button class="btn-delete" onclick="deleteEntry(${index})">X</button>
+                    </td>
+                </tr>`;
+        });
+    }
+
+    function deleteEntry(index) {
+        contacts.splice(index, 1);
+        renderTable();
+    }
+
+    function editEntry(index) {
+        const c = contacts[index];
+        document.getElementById('title').value = c.title;
+        document.getElementById('email').value = c.email;
+        document.getElementById('type').value = c.type;
+        document.getElementById('phone').value = c.phone;
+        document.getElementById('edit-index').value = index;
+        document.getElementById('add-btn').innerText = "Änderung speichern";
+    }
+
+    function clearInputs() {
+        document.getElementById('title').value = "";
+        document.getElementById('email').value = "";
+        document.getElementById('phone').value = "";
+    }
+
+    function downloadFullCSV() {
+        if (contacts.length === 0) return alert("Die Liste ist leer!");
+        
+        let csvContent = "Title,URL,Username,Password,Notes\n";
+        contacts.forEach(c => {
+            const notes = `Typ: ${c.type} | Tel: ${c.phone}`;
+            csvContent += `"${c.title}",,"${c.email}",,"${notes}"\n`;
+        });
+
+        const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+        const link = document.createElement("a");
+        link.href = URL.createObjectURL(blob);
+        link.download = "kontakte_liste.csv";
+        link.click();
+    }
+</script
