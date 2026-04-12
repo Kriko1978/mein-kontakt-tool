@@ -23,9 +23,12 @@ def load_data_from_github():
     try:
         content = repo.get_contents(FILE_PATH)
         df = pd.read_csv(io.StringIO(content.decoded_content.decode('utf-8')))
-        return df, content.sha
+        # Falls alte Spalten noch da sind, filtern wir sie hier raus
+        needed_columns = ["Title", "Username", "Notes"]
+        return df[needed_columns] if all(c in df.columns for c in needed_columns) else df, content.sha
     except:
-        columns = ["Title", "URL", "Username", "Password", "Notes"]
+        # Neue Struktur ohne URL und Password
+        columns = ["Title", "Username", "Notes"]
         return pd.DataFrame(columns=columns), None
 
 def save_to_github(df, sha, message="Update"):
@@ -59,14 +62,13 @@ with st.form("kontakt_form", clear_on_submit=True):
     t2 = c3.selectbox("Typ 2", ["Büro", "Handy", "Privat"], key="type2")
     n2 = c4.text_input("Nummer 2", key="num2")
     
-    # NEU: Nummer 3
+    # Nummer 3
     c5, c6 = st.columns([1, 2])
     t3 = c5.selectbox("Typ 3", ["Privat", "Handy", "Büro"], key="type3")
     n3 = c6.text_input("Nummer 3", key="num3")
 
     if st.form_submit_button("Dauerhaft speichern"):
         if name:
-            # Nummern sammeln und zusammenbauen
             phone_entries = []
             if n1: phone_entries.append(f"{t1}: {n1}")
             if n2: phone_entries.append(f"{t2}: {n2}")
@@ -74,11 +76,10 @@ with st.form("kontakt_form", clear_on_submit=True):
             
             full_notes = " | ".join(phone_entries)
             
+            # Nur noch die 3 wichtigen Spalten
             new_entry = pd.DataFrame([{
                 "Title": name, 
-                "URL": "", 
                 "Username": email, 
-                "Password": "", 
                 "Notes": full_notes
             }])
             
@@ -94,7 +95,11 @@ st.divider()
 
 # --- ANZEIGE DER LISTE ---
 st.subheader("📁 Kontakte Firma Schüßler")
-st.dataframe(df, use_container_width=True)
+
+# Spaltennamen für die Anzeige schöner machen
+display_df = df.copy()
+display_df.columns = ["Name", "E-Mail", "Telefonnummern"]
+st.dataframe(display_df, use_container_width=True)
 
 if not df.empty:
     csv = df.to_csv(index=False).encode('utf-8')
@@ -109,9 +114,8 @@ if not df.empty:
             st.warning("Admin-Modus aktiv.")
             
             if st.button("🚨 GESAMTE LISTE LÖSCHEN"):
-                empty_df = pd.DataFrame(columns=["Title", "URL", "Username", "Password", "Notes"])
+                empty_df = pd.DataFrame(columns=["Title", "Username", "Notes"])
                 save_to_github(empty_df, file_sha, "Liste geleert")
-                st.success("Gelöscht!")
                 st.rerun()
                 
             name_to_delete = st.selectbox("Einzelnen Kontakt löschen", ["---"] + df["Title"].tolist())
