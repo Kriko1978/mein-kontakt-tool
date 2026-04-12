@@ -2,6 +2,7 @@ import streamlit as st
 import pandas as pd
 from github import Github
 import io
+import re
 
 # Seite einrichten
 st.set_page_config(page_title="Kontakt-Tresor Firma Schüßler", page_icon="🔐")
@@ -18,12 +19,22 @@ except Exception as e:
     st.stop()
 
 # --- FUNKTIONEN ---
+def format_phone_number(phone):
+    """Wandelt 0... in +49... um und entfernt Leerzeichen."""
+    if not phone:
+        return ""
+    # Leerzeichen und Bindestriche entfernen
+    phone = re.sub(r"[\s\-]", "", str(phone))
+    # Wenn sie mit 0 beginnt (aber nicht 00), durch +49 ersetzen
+    if phone.startswith("0") and not phone.startswith("00"):
+        phone = "+49" + phone[1:]
+    return phone
+
 def load_data_from_github():
     spalten = ["Name", "Email", "Handy", "Büro", "Privat"]
     try:
         content = repo.get_contents(FILE_PATH)
         df = pd.read_csv(io.StringIO(content.decoded_content.decode('utf-8')))
-        # Sicherstellen, dass alle Spalten existieren
         for s in spalten:
             if s not in df.columns:
                 df[s] = ""
@@ -47,7 +58,6 @@ def create_vcard(df):
         if pd.notnull(row['Email']) and str(row['Email']).strip() != "":
             vcard_content += f"EMAIL:{row['Email']}\n"
         
-        # Telefonnummern einzeln zuordnen
         if pd.notnull(row['Handy']) and str(row['Handy']).strip() != "":
             vcard_content += f"TEL;TYPE=CELL:{row['Handy']}\n"
         if pd.notnull(row['Büro']) and str(row['Büro']).strip() != "":
@@ -70,26 +80,31 @@ with st.form("kontakt_form", clear_on_submit=True):
     email = st.text_input("E-Mail Adresse")
     
     st.write("---")
-    st.write("📞 **Telefonnummern**")
+    st.write("📞 **Telefonnummern** (werden automatisch in +49 umgewandelt)")
     
     c1, c2, c3 = st.columns(3)
-    num_handy = c1.text_input("Handy", placeholder="0170...")
-    num_buero = c2.text_input("Büro", placeholder="030...")
-    num_privat = c3.text_input("Privat", placeholder="0123...")
+    num_handy = c1.text_input("Handy")
+    num_buero = c2.text_input("Büro")
+    num_privat = c3.text_input("Privat")
 
     if st.form_submit_button("Dauerhaft speichern"):
         if name:
+            # Formatierung anwenden
+            f_handy = format_phone_number(num_handy)
+            f_buero = format_phone_number(num_buero)
+            f_privat = format_phone_number(num_privat)
+            
             new_entry = pd.DataFrame([{
                 "Name": name, 
                 "Email": email, 
-                "Handy": num_handy,
-                "Büro": num_buero,
-                "Privat": num_privat
+                "Handy": f_handy,
+                "Büro": f_buero,
+                "Privat": f_privat
             }])
             
             updated_df = pd.concat([df, new_entry], ignore_index=True)
             save_to_github(updated_df, file_sha, f"Hinzugefügt: {name}")
-            st.success(f"✅ {name} wurde gespeichert!")
+            st.success(f"✅ {name} wurde mit +49 Formatierung gespeichert!")
             st.rerun()
         else:
             st.error("Bitte einen Namen eingeben!")
