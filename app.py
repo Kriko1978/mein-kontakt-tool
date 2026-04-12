@@ -48,25 +48,47 @@ with st.form("kontakt_form", clear_on_submit=True):
     
     st.write("---")
     st.write("📞 **Telefonnummern**")
-    c1, c2 = st.columns([1, 2])
-    t1 = c1.selectbox("Typ 1", ["Handy", "Privat", "Büro"])
-    n1 = c2.text_input("Nummer 1")
     
+    # Nummer 1
+    c1, c2 = st.columns([1, 2])
+    t1 = c1.selectbox("Typ 1", ["Handy", "Privat", "Büro"], key="type1")
+    n1 = c2.text_input("Nummer 1", key="num1")
+    
+    # Nummer 2
     c3, c4 = st.columns([1, 2])
-    t2 = c3.selectbox("Typ 2", ["Büro", "Handy", "Privat"])
-    n2 = c4.text_input("Nummer 2")
+    t2 = c3.selectbox("Typ 2", ["Büro", "Handy", "Privat"], key="type2")
+    n2 = c4.text_input("Nummer 2", key="num2")
+    
+    # NEU: Nummer 3
+    c5, c6 = st.columns([1, 2])
+    t3 = c5.selectbox("Typ 3", ["Privat", "Handy", "Büro"], key="type3")
+    n3 = c6.text_input("Nummer 3", key="num3")
 
     if st.form_submit_button("Dauerhaft speichern"):
         if name:
-            notes = f"{t1}: {n1}"
-            if n2: notes += f" | {t2}: {n2}"
+            # Nummern sammeln und zusammenbauen
+            phone_entries = []
+            if n1: phone_entries.append(f"{t1}: {n1}")
+            if n2: phone_entries.append(f"{t2}: {n2}")
+            if n3: phone_entries.append(f"{t3}: {n3}")
             
-            new_entry = pd.DataFrame([{"Title": name, "URL": "", "Username": email, "Password": "", "Notes": notes}])
+            full_notes = " | ".join(phone_entries)
+            
+            new_entry = pd.DataFrame([{
+                "Title": name, 
+                "URL": "", 
+                "Username": email, 
+                "Password": "", 
+                "Notes": full_notes
+            }])
+            
             updated_df = pd.concat([df, new_entry], ignore_index=True)
             
             save_to_github(updated_df, file_sha, f"Hinzugefügt: {name}")
-            st.success(f"✅ {name} gespeichert!")
+            st.success(f"✅ {name} wurde gespeichert!")
             st.rerun()
+        else:
+            st.error("Bitte einen Namen eingeben!")
 
 st.divider()
 
@@ -78,31 +100,25 @@ if not df.empty:
     csv = df.to_csv(index=False).encode('utf-8')
     st.download_button("📥 CSV für Apple herunterladen", csv, "kontakte.csv", "text/csv")
     
-    # --- LÖSCH-BEREICH MIT PASSWORT ---
+    # --- LÖSCH-BEREICH ---
     st.write("---")
     with st.expander("⚠️ Kontakte löschen (Admin Bereich)"):
         pw_input = st.text_input("Sicherheits-Passwort eingeben", type="password")
         
         if pw_input == "erkenschwick":
-            st.warning("Achtung: Du kannst jetzt die gesamte Liste leeren oder einzelne Einträge entfernen.")
+            st.warning("Admin-Modus aktiv.")
             
-            # Button für alles löschen
             if st.button("🚨 GESAMTE LISTE LÖSCHEN"):
                 empty_df = pd.DataFrame(columns=["Title", "URL", "Username", "Password", "Notes"])
-                save_to_github(empty_df, file_sha, "Liste komplett geleert")
-                st.success("Die Liste wurde vollständig gelöscht.")
+                save_to_github(empty_df, file_sha, "Liste geleert")
+                st.success("Gelöscht!")
                 st.rerun()
                 
-            # Einzelne Zeile löschen
-            st.write("Einzelnen Kontakt löschen:")
-            name_to_delete = st.selectbox("Welchen Kontakt entfernen?", ["---"] + df["Title"].tolist())
+            name_to_delete = st.selectbox("Einzelnen Kontakt löschen", ["---"] + df["Title"].tolist())
             if name_to_delete != "---":
-                if st.button(f"'{name_to_delete}' endgültig löschen"):
+                if st.button(f"'{name_to_delete}' entfernen"):
                     updated_df = df[df["Title"] != name_to_delete]
                     save_to_github(updated_df, file_sha, f"Gelöscht: {name_to_delete}")
-                    st.success(f"{name_to_delete} wurde entfernt.")
                     st.rerun()
         elif pw_input != "":
             st.error("Falsches Passwort!")
-else:
-    st.info("Die Liste ist aktuell noch leer.")
