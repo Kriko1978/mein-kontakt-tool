@@ -1,13 +1,16 @@
 import streamlit as st
+from streamlit_gsheets import GSheetsConnection
 import pandas as pd
 
-st.set_page_config(page_title="Kontakt Tresor", page_icon="🔐")
+st.set_page_config(page_title="Kontakt Tresor Cloud", page_icon="🔐")
 
-st.title("🔐 Kontakt-Manager (CSV)")
+st.title("🔐 Kontakt-Manager (Cloud-Speicher)")
 
-# Datenbank-Simulation (Wir nutzen Session State für die aktuelle Sitzung)
-if 'contacts' not in st.session_state:
-    st.session_state.contacts = pd.DataFrame(columns=["Title", "URL", "Username", "Password", "Notes"])
+# Verbindung zu Google Sheets herstellen
+conn = st.connection("gsheets", type=GSheetsConnection)
+
+# Daten aus Google Sheets laden
+df = conn.read(ttl="0") # ttl=0 sorgt dafür, dass die Daten immer frisch geladen werden
 
 # Eingabe-Maske
 with st.expander("➕ Neuen Kontakt hinzufügen", expanded=True):
@@ -20,36 +23,28 @@ with st.expander("➕ Neuen Kontakt hinzufügen", expanded=True):
         with col2:
             phone = st.text_input("Telefonnummer")
         
-        submitted = st.form_submit_button("Hinzufügen")
+        submitted = st.form_submit_button("Hinzufügen & Speichern")
         
         if submitted and name:
-            new_data = {
+            new_row = pd.DataFrame([{
                 "Title": name,
                 "URL": "",
                 "Username": email,
                 "Password": "",
                 "Notes": f"Typ: {typ} | Tel: {phone}"
-            }
-            st.session_state.contacts = pd.concat([st.session_state.contacts, pd.DataFrame([new_data])], ignore_index=True)
-            st.success(f"{name} hinzugefügt!")
+            }])
+            updated_df = pd.concat([df, new_row], ignore_index=True)
+            conn.update(data=updated_df)
+            st.success(f"{name} wurde in der Cloud gespeichert!")
+            st.rerun()
 
 # Anzeige der Liste
-st.subheader("Deine Kontakte")
-if not st.session_state.contacts.empty:
-    # Tabelle anzeigen
-    edited_df = st.data_editor(st.session_state.contacts, num_rows="dynamic", use_container_width=True)
-    st.session_state.contacts = edited_df
-
-    # CSV Export
-    csv = st.session_state.contacts.to_csv(index=False).encode('utf-8')
-    st.download_button(
-        label="📥 Gesamte Liste als CSV herunterladen",
-        data=csv,
-        file_name="kontakte_export.csv",
-        mime="text/csv",
-    )
+st.subheader("Deine Kontakte (aus der Cloud)")
+if not df.empty:
+    st.dataframe(df, use_container_width=True)
+    
+    # CSV Export für Apple Schlüssel-App
+    csv = df.to_csv(index=False).encode('utf-8')
+    st.download_button("📥 Als CSV für Apple exportieren", data=csv, file_name="kontakte.csv", mime="text/csv")
 else:
-    st.info("Noch keine Kontakte in der Liste.")
-
-# Hinweis zur Speicherung
-st.warning("Hinweis: Ohne Datenbank-Anbindung werden die Daten beim Neustart der App zurückgesetzt.")
+    st.info("Noch keine Kontakte gespeichert.")
