@@ -4,7 +4,7 @@ from github import Github
 import io
 
 # Seite einrichten
-st.set_page_config(page_title="Kontakt-Tresor Cloud", page_icon="🔐")
+st.set_page_config(page_title="Kontakt-Tresor Firma Schüßler", page_icon="🔐")
 
 # --- KONFIGURATION ---
 try:
@@ -22,18 +22,16 @@ except Exception as e:
 def load_data_from_github():
     try:
         content = repo.get_contents(FILE_PATH)
-        # Wir nutzen .decoded_content um den Text aus der GitHub Datei zu lesen
         df = pd.read_csv(io.StringIO(content.decoded_content.decode('utf-8')))
         return df, content.sha
     except:
-        # Falls die Datei noch nicht existiert: Leere Tabelle mit Spalten erstellen
         columns = ["Title", "URL", "Username", "Password", "Notes"]
         return pd.DataFrame(columns=columns), None
 
 # --- DATEN LADEN ---
 df, file_sha = load_data_from_github()
 
-st.title("🔐 Mein Kontakt-Manager")
+st.title("🔐 Kontakt-Manager")
 
 # --- EINGABE ---
 with st.form("kontakt_form", clear_on_submit=True):
@@ -41,6 +39,7 @@ with st.form("kontakt_form", clear_on_submit=True):
     name = st.text_input("Name / Firma")
     email = st.text_input("E-Mail")
     
+    st.write("---")
     st.write("📞 **Telefonnummern**")
     c1, c2 = st.columns([1, 2])
     t1 = c1.selectbox("Typ 1", ["Handy", "Privat", "Büro"])
@@ -65,19 +64,18 @@ with st.form("kontakt_form", clear_on_submit=True):
             else:
                 repo.create_file(FILE_PATH, "Initial", csv_string)
             
-            st.success("✅ Gespeichert! Lade Liste neu...")
+            st.success("✅ Gespeichert!")
             st.rerun()
 
 st.divider()
 
-# --- ANZEIGE DER LISTE (Der Teil der gefehlt hat) ---
-st.subheader("📁 Deine gespeicherten Kontakte")
+# --- ANZEIGE DER LISTE MIT NEUER ÜBERSCHRIFT ---
+st.subheader("📁 Kontakte Firma Schüßler")
 
-# Wir zeigen die Tabelle immer an, auch wenn sie leer ist
 st.dataframe(df, use_container_width=True)
 
 if not df.empty:
     csv = df.to_csv(index=False).encode('utf-8')
     st.download_button("📥 CSV herunterladen", csv, "kontakte.csv", "text/csv")
 else:
-    st.info("Die Liste ist aktuell noch leer. Füge oben einen Kontakt hinzu!")
+    st.info("Die Liste ist aktuell noch leer.")
