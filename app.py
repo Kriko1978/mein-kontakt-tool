@@ -20,30 +20,38 @@ except Exception as e:
 
 # --- FUNKTIONEN ---
 def format_phone_number(phone):
-    """Wandelt 0... in +49... um und entfernt Leerzeichen."""
+    """Wandelt 0... in +49... um und sorgt dafür, dass das + bleibt."""
     if not phone:
         return ""
-    # Leerzeichen und Bindestriche entfernen
-    phone = re.sub(r"[\s\-]", "", str(phone))
+    # Nur Zahlen und das Plus behalten, alles andere (Leerzeichen, Klammern) weg
+    phone = re.sub(r"[^\d+]", "", str(phone))
+    
     # Wenn sie mit 0 beginnt (aber nicht 00), durch +49 ersetzen
     if phone.startswith("0") and not phone.startswith("00"):
         phone = "+49" + phone[1:]
+    
+    # Sicherstellen, dass ein + davor steht, falls es eine internationale Nummer ist
+    if phone.startswith("49") and not phone.startswith("+"):
+        phone = "+" + phone
+        
     return phone
 
 def load_data_from_github():
     spalten = ["Name", "Email", "Handy", "Büro", "Privat"]
     try:
         content = repo.get_contents(FILE_PATH)
-        df = pd.read_csv(io.StringIO(content.decoded_content.decode('utf-8')))
+        # dtype=str ist wichtig, damit das + am Anfang nicht gelöscht wird!
+        df = pd.read_csv(io.StringIO(content.decoded_content.decode('utf-8')), dtype=str)
         for s in spalten:
             if s not in df.columns:
                 df[s] = ""
-        return df[spalten], content.sha
+        return df[spalten].fillna(""), content.sha
     except:
         return pd.DataFrame(columns=spalten), None
 
 def save_to_github(df, sha, message="Update"):
-    csv_string = df.to_csv(index=False)
+    # Wir speichern explizit als String
+    csv_string = df.to_csv(index=False, quoting=1) # quoting=1 setzt Anführungszeichen um Texte
     if sha:
         repo.update_file(FILE_PATH, message, csv_string, sha)
     else:
@@ -55,14 +63,15 @@ def create_vcard(df):
         vcard_content += "BEGIN:VCARD\n"
         vcard_content += "VERSION:3.0\n"
         vcard_content += f"FN:{row['Name']}\n"
-        if pd.notnull(row['Email']) and str(row['Email']).strip() != "":
+        if row['Email']:
             vcard_content += f"EMAIL:{row['Email']}\n"
         
-        if pd.notnull(row['Handy']) and str(row['Handy']).strip() != "":
+        # Telefonnummern
+        if row['Handy']:
             vcard_content += f"TEL;TYPE=CELL:{row['Handy']}\n"
-        if pd.notnull(row['Büro']) and str(row['Büro']).strip() != "":
+        if row['Büro']:
             vcard_content += f"TEL;TYPE=WORK:{row['Büro']}\n"
-        if pd.notnull(row['Privat']) and str(row['Privat']).strip() != "":
+        if row['Privat']:
             vcard_content += f"TEL;TYPE=HOME:{row['Privat']}\n"
         
         vcard_content += "END:VCARD\n"
@@ -89,7 +98,6 @@ with st.form("kontakt_form", clear_on_submit=True):
 
     if st.form_submit_button("Dauerhaft speichern"):
         if name:
-            # Formatierung anwenden
             f_handy = format_phone_number(num_handy)
             f_buero = format_phone_number(num_buero)
             f_privat = format_phone_number(num_privat)
@@ -100,11 +108,11 @@ with st.form("kontakt_form", clear_on_submit=True):
                 "Handy": f_handy,
                 "Büro": f_buero,
                 "Privat": f_privat
-            }])
+            }], dtype=str)
             
-            updated_df = pd.concat([df, new_entry], ignore_index=True)
+            updated_df = pd.concat([df, new_entry], ignore_index=True).astype(str)
             save_to_github(updated_df, file_sha, f"Hinzugefügt: {name}")
-            st.success(f"✅ {name} wurde mit +49 Formatierung gespeichert!")
+            st.success(f"✅ {name} gespeichert!")
             st.rerun()
         else:
             st.error("Bitte einen Namen eingeben!")
@@ -119,12 +127,7 @@ if not df.empty:
     col_dl1, col_dl2 = st.columns(2)
     with col_dl1:
         vcf_data = create_vcard(df)
-        st.download_button(
-            label="📲 iPhone Kontakte (vcf)",
-            data=vcf_data,
-            file_name="Firma_Schuessler.vcf",
-            mime="text/vcard"
-        )
+        st.download_button("📲 iPhone Kontakte (vcf)", vcf_data, "Firma_Schuessler.vcf", "text/vcard")
     with col_dl2:
         csv = df.to_csv(index=False).encode('utf-8')
         st.download_button("📥 Backup (csv)", csv, "kontakte.csv", "text/csv")
@@ -137,9 +140,8 @@ if not df.empty:
                 save_to_github(pd.DataFrame(columns=["Name", "Email", "Handy", "Büro", "Privat"]), file_sha, "Geleert")
                 st.rerun()
             
-            st.write("Einzelnen Kontakt löschen:")
-            name_to_del = st.selectbox("Kontakt wählen", ["---"] + df["Name"].tolist())
-            if name_to_del != "---" and st.button(f"{name_to_del} löschen"):
+            name_to_del = st.selectbox("Kontakt löschen", ["---"] + df["Name"].tolist())
+            if name_to_del != "---" and st.button(f"{name_to_del} entfernen"):
                 updated_df = df[df["Name"] != name_to_del]
                 save_to_github(updated_df, file_sha, f"Gelöscht: {name_to_del}")
                 st.rerun()
