@@ -33,7 +33,6 @@ def format_phone_number(phone):
     return "+" + digits if not digits.startswith("+") else digits
 
 def load_data_from_github():
-    # Liste der Spalten inkl. Firma
     spalten = ["Name", "Firma", "Email", "Handy", "Büro", "Privat"]
     try:
         content = repo.get_contents(FILE_PATH)
@@ -46,7 +45,6 @@ def load_data_from_github():
         return pd.DataFrame(columns=spalten), None
 
 def save_to_github(df, sha, message="Update"):
-    # Sortieren nach Firma, dann Name
     df = df.sort_values(by=["Firma", "Name"])
     csv_string = df.to_csv(index=False, quoting=1)
     if sha:
@@ -77,7 +75,7 @@ tab_view, tab_add, tab_edit, tab_admin = st.tabs([
     "📂 Kontakte ansehen", 
     "➕ Neu anlegen", 
     "📝 Bearbeiten", 
-    "⚠️ Admin"
+    "⚠️ Admin / Löschen"
 ])
 
 # --- TAB 1: ANSEHEN & SUCHE ---
@@ -85,7 +83,6 @@ with tab_view:
     search = st.text_input("🔍 Suche nach Name oder Firma")
     display_df = df.copy()
     if search:
-        # Sucht jetzt in Name UND Firma
         display_df = display_df[
             display_df["Name"].str.contains(search, case=False, na=False) | 
             display_df["Firma"].str.contains(search, case=False, na=False)
@@ -118,7 +115,7 @@ with tab_add:
         p = c3.text_input("Privat")
         
         if st.form_submit_button("Dauerhaft speichern"):
-            if name or firma: # Eines von beidem muss ausgefüllt sein
+            if name or firma:
                 new_entry = pd.DataFrame([{
                     "Name": name, "Firma": firma, "Email": email, 
                     "Handy": format_phone_number(h), 
@@ -132,60 +129,68 @@ with tab_add:
             else:
                 st.error("Bitte mindestens Name oder Firma angeben!")
 
-# --- TAB 3: BEARBEITEN ---
+# --- TAB 3: BEARBEITEN (JETZT MIT PASSWORT) ---
 with tab_edit:
-    if not df.empty:
-        # Anzeige im Dropdown: Firma - Name
-        options = []
-        for i, r in df.iterrows():
-            label = f"{r['Firma']} - {r['Name']}" if r['Firma'] and r['Name'] else r['Firma'] or r['Name']
-            options.append(label)
-        
-        selected_index = st.selectbox("Kontakt zum Bearbeiten auswählen", range(len(options)), format_func=lambda x: options[x])
-        current_data = df.iloc[selected_index]
-        
-        with st.form("edit_form"):
-            e_name = st.text_input("Ansprechpartner", value=current_data["Name"])
-            e_firma = st.text_input("Firmenbezeichnung", value=current_data["Firma"])
-            e_email = st.text_input("E-Mail", value=current_data["Email"])
-            c1, c2, c3 = st.columns(3)
-            e_h = c1.text_input("Handy", value=current_data["Handy"])
-            e_b = c2.text_input("Büro", value=current_data["Büro"])
-            e_p = c3.text_input("Privat", value=current_data["Privat"])
+    st.subheader("Eintrag bearbeiten")
+    pw_edit = st.text_input("Passwort zum Bearbeiten erforderlich", type="password", key="pw_edit")
+    
+    if pw_edit == "erkenschwick":
+        if not df.empty:
+            options = []
+            for i, r in df.iterrows():
+                label = f"{r['Firma']} - {r['Name']}" if r['Firma'] and r['Name'] else r['Firma'] or r['Name']
+                options.append(label)
             
-            if st.form_submit_button("Änderungen speichern"):
-                # Index-basiertes Löschen ist sicherer bei gleichen Namen
-                updated_df = df.drop(df.index[selected_index]).copy()
-                new_entry = pd.DataFrame([{
-                    "Name": e_name, "Firma": e_firma, "Email": e_email, 
-                    "Handy": format_phone_number(e_h), 
-                    "Büro": format_phone_number(e_b), 
-                    "Privat": format_phone_number(e_p)
-                }], dtype=str)
-                updated_df = pd.concat([updated_df, new_entry], ignore_index=True)
-                save_to_github(updated_df, file_sha, f"Update: {e_name} / {e_firma}")
-                st.success("✅ Änderungen wurden übernommen!")
-                st.rerun()
-    else:
-        st.info("Keine Kontakte vorhanden.")
+            selected_index = st.selectbox("Kontakt wählen", range(len(options)), format_func=lambda x: options[x])
+            current_data = df.iloc[selected_index]
+            
+            with st.form("edit_form"):
+                e_name = st.text_input("Ansprechpartner", value=current_data["Name"])
+                e_firma = st.text_input("Firmenbezeichnung", value=current_data["Firma"])
+                e_email = st.text_input("E-Mail", value=current_data["Email"])
+                c1, c2, c3 = st.columns(3)
+                e_h = c1.text_input("Handy", value=current_data["Handy"])
+                e_b = c2.text_input("Büro", value=current_data["Büro"])
+                e_p = c3.text_input("Privat", value=current_data["Privat"])
+                
+                if st.form_submit_button("Änderungen speichern"):
+                    updated_df = df.drop(df.index[selected_index]).copy()
+                    new_entry = pd.DataFrame([{
+                        "Name": e_name, "Firma": e_firma, "Email": e_email, 
+                        "Handy": format_phone_number(e_h), 
+                        "Büro": format_phone_number(e_b), 
+                        "Privat": format_phone_number(e_p)
+                    }], dtype=str)
+                    updated_df = pd.concat([updated_df, new_entry], ignore_index=True)
+                    save_to_github(updated_df, file_sha, f"Update: {e_name} / {e_firma}")
+                    st.success("✅ Änderungen wurden übernommen!")
+                    st.rerun()
+        else:
+            st.info("Keine Kontakte zum Bearbeiten vorhanden.")
+    elif pw_edit != "":
+        st.error("Falsches Passwort!")
 
 # --- TAB 4: ADMIN ---
 with tab_admin:
     st.subheader("Gefahrenbereich")
-    pw = st.text_input("Admin-Passwort", type="password")
+    pw_admin = st.text_input("Admin-Passwort zum Löschen", type="password", key="pw_admin")
     
-    if pw == "erkenschwick":
-        # Einzelnen Kontakt löschen
-        options_del = [f"{r['Firma']} | {r['Name']}" for i, r in df.iterrows()]
-        del_idx = st.selectbox("Kontakt endgültig löschen", range(len(options_del)), format_func=lambda x: options_del[x])
-        
-        if st.button("❌ Markierten Kontakt löschen"):
-            updated_df = df.drop(df.index[del_idx])
-            save_to_github(updated_df, file_sha, "Kontakt gelöscht")
-            st.success("Gelöscht.")
-            st.rerun()
-        
-        st.divider()
-        if st.button("🚨 GESAMTE DATENBANK LEEREN"):
-            save_to_github(pd.DataFrame(columns=["Name", "Firma", "Email", "Handy", "Büro", "Privat"]), file_sha, "Datenbank geleert")
-            st.rerun()
+    if pw_admin == "erkenschwick":
+        if not df.empty:
+            options_del = [f"{r['Firma']} | {r['Name']}" for i, r in df.iterrows()]
+            del_idx = st.selectbox("Kontakt endgültig löschen", range(len(options_del)), format_func=lambda x: options_del[x])
+            
+            if st.button("❌ Markierten Kontakt löschen"):
+                updated_df = df.drop(df.index[del_idx])
+                save_to_github(updated_df, file_sha, "Kontakt gelöscht")
+                st.success("Gelöscht.")
+                st.rerun()
+            
+            st.divider()
+            if st.button("🚨 GESAMTE DATENBANK LEEREN"):
+                save_to_github(pd.DataFrame(columns=["Name", "Firma", "Email", "Handy", "Büro", "Privat"]), file_sha, "Datenbank geleert")
+                st.rerun()
+        else:
+            st.info("Datenbank ist bereits leer.")
+    elif pw_admin != "":
+        st.error("Falsches Passwort!")
