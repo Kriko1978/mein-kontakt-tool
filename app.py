@@ -23,23 +23,18 @@ def format_phone_number(phone):
     """Bereinigt Nummern und formatiert sie einheitlich auf +49."""
     if not phone or pd.isna(phone):
         return ""
-    # Nur Ziffern extrahieren
     digits = re.sub(r"\D", "", str(phone))
     if not digits:
         return ""
-    
-    # 0049... zu 49...
     if digits.startswith("00"):
         digits = digits[2:]
-    # 0... zu 49...
     elif digits.startswith("0"):
         digits = "49" + digits[1:]
-    
-    # Sicherstellen, dass ein + davor steht
     return "+" + digits if not digits.startswith("+") else digits
 
 def load_data_from_github():
-    spalten = ["Name", "Email", "Handy", "Büro", "Privat"]
+    # Liste der Spalten inkl. Firma
+    spalten = ["Name", "Firma", "Email", "Handy", "Büro", "Privat"]
     try:
         content = repo.get_contents(FILE_PATH)
         df = pd.read_csv(io.StringIO(content.decoded_content.decode('utf-8')), dtype=str)
@@ -51,8 +46,8 @@ def load_data_from_github():
         return pd.DataFrame(columns=spalten), None
 
 def save_to_github(df, sha, message="Update"):
-    # Sortieren nach Name für bessere Übersicht
-    df = df.sort_values(by="Name")
+    # Sortieren nach Firma, dann Name
+    df = df.sort_values(by=["Firma", "Name"])
     csv_string = df.to_csv(index=False, quoting=1)
     if sha:
         repo.update_file(FILE_PATH, message, csv_string, sha)
@@ -64,6 +59,7 @@ def create_vcard(df):
     for _, row in df.iterrows():
         vcard_content += "BEGIN:VCARD\nVERSION:3.0\n"
         vcard_content += f"FN:{row['Name']}\n"
+        if row['Firma']: vcard_content += f"ORG:{row['Firma']}\n"
         if row['Email']: vcard_content += f"EMAIL:{row['Email']}\n"
         if row['Handy']: vcard_content += f"TEL;TYPE=CELL:{row['Handy']}\n"
         if row['Büro']:  vcard_content += f"TEL;TYPE=WORK:{row['Büro']}\n"
@@ -89,7 +85,11 @@ with tab_view:
     search = st.text_input("🔍 Suche nach Name oder Firma")
     display_df = df.copy()
     if search:
-        display_df = display_df[display_df["Name"].str.contains(search, case=False, na=False)]
+        # Sucht jetzt in Name UND Firma
+        display_df = display_df[
+            display_df["Name"].str.contains(search, case=False, na=False) | 
+            display_df["Firma"].str.contains(search, case=False, na=False)
+        ]
     
     st.dataframe(display_df, use_container_width=True, hide_index=True)
     
@@ -106,79 +106,86 @@ with tab_view:
 with tab_add:
     with st.form("add_form", clear_on_submit=True):
         st.subheader("Neuen Kontakt hinzufügen")
-        name = st.text_input("Name / Firma")
+        c_top1, c_top2 = st.columns(2)
+        name = c_top1.text_input("Ansprechpartner (Name)")
+        firma = c_top2.text_input("Firmenbezeichnung")
         email = st.text_input("E-Mail")
+        
+        st.write("📞 Erreichbarkeit")
         c1, c2, c3 = st.columns(3)
         h = c1.text_input("Handy")
         b = c2.text_input("Büro")
         p = c3.text_input("Privat")
         
         if st.form_submit_button("Dauerhaft speichern"):
-            if name:
+            if name or firma: # Eines von beidem muss ausgefüllt sein
                 new_entry = pd.DataFrame([{
-                    "Name": name, "Email": email, 
+                    "Name": name, "Firma": firma, "Email": email, 
                     "Handy": format_phone_number(h), 
                     "Büro": format_phone_number(b), 
                     "Privat": format_phone_number(p)
                 }], dtype=str)
                 updated_df = pd.concat([df, new_entry], ignore_index=True)
-                save_to_github(updated_df, file_sha, f"Neu: {name}")
-                st.success(f"✅ {name} wurde hinzugefügt!")
+                save_to_github(updated_df, file_sha, f"Neu: {name} ({firma})")
+                st.success(f"✅ Eintrag gespeichert!")
                 st.rerun()
             else:
-                st.error("Name ist ein Pflichtfeld!")
+                st.error("Bitte mindestens Name oder Firma angeben!")
 
 # --- TAB 3: BEARBEITEN ---
 with tab_edit:
     if not df.empty:
-        contact_to_edit = st.selectbox("Kontakt zum Bearbeiten auswählen", ["---"] + sorted(df["Name"].tolist()))
+        # Anzeige im Dropdown: Firma - Name
+        options = []
+        for i, r in df.iterrows():
+            label = f"{r['Firma']} - {r['Name']}" if r['Firma'] and r['Name'] else r['Firma'] or r['Name']
+            options.append(label)
         
-        if contact_to_edit != "---":
-            current_data = df[df["Name"] == contact_to_edit].iloc[0]
+        selected_index = st.selectbox("Kontakt zum Bearbeiten auswählen", range(len(options)), format_func=lambda x: options[x])
+        current_data = df.iloc[selected_index]
+        
+        with st.form("edit_form"):
+            e_name = st.text_input("Ansprechpartner", value=current_data["Name"])
+            e_firma = st.text_input("Firmenbezeichnung", value=current_data["Firma"])
+            e_email = st.text_input("E-Mail", value=current_data["Email"])
+            c1, c2, c3 = st.columns(3)
+            e_h = c1.text_input("Handy", value=current_data["Handy"])
+            e_b = c2.text_input("Büro", value=current_data["Büro"])
+            e_p = c3.text_input("Privat", value=current_data["Privat"])
             
-            with st.form("edit_form"):
-                e_name = st.text_input("Name / Firma", value=current_data["Name"])
-                e_email = st.text_input("E-Mail", value=current_data["Email"])
-                c1, c2, c3 = st.columns(3)
-                e_h = c1.text_input("Handy", value=current_data["Handy"])
-                e_b = c2.text_input("Büro", value=current_data["Büro"])
-                e_p = c3.text_input("Privat", value=current_data["Privat"])
-                
-                if st.form_submit_button("Änderungen speichern"):
-                    # Alten Eintrag entfernen, neuen hinzufügen
-                    updated_df = df[df["Name"] != contact_to_edit].copy()
-                    new_entry = pd.DataFrame([{
-                        "Name": e_name, "Email": e_email, 
-                        "Handy": format_phone_number(e_h), 
-                        "Büro": format_phone_number(e_b), 
-                        "Privat": format_phone_number(e_p)
-                    }], dtype=str)
-                    updated_df = pd.concat([updated_df, new_entry], ignore_index=True)
-                    save_to_github(updated_df, file_sha, f"Update: {e_name}")
-                    st.success(f"✅ {e_name} wurde aktualisiert!")
-                    st.rerun()
+            if st.form_submit_button("Änderungen speichern"):
+                # Index-basiertes Löschen ist sicherer bei gleichen Namen
+                updated_df = df.drop(df.index[selected_index]).copy()
+                new_entry = pd.DataFrame([{
+                    "Name": e_name, "Firma": e_firma, "Email": e_email, 
+                    "Handy": format_phone_number(e_h), 
+                    "Büro": format_phone_number(e_b), 
+                    "Privat": format_phone_number(e_p)
+                }], dtype=str)
+                updated_df = pd.concat([updated_df, new_entry], ignore_index=True)
+                save_to_github(updated_df, file_sha, f"Update: {e_name} / {e_firma}")
+                st.success("✅ Änderungen wurden übernommen!")
+                st.rerun()
     else:
         st.info("Keine Kontakte vorhanden.")
 
-# --- TAB 4: ADMIN (LÖSCHEN) ---
+# --- TAB 4: ADMIN ---
 with tab_admin:
     st.subheader("Gefahrenbereich")
     pw = st.text_input("Admin-Passwort", type="password")
     
     if pw == "erkenschwick":
-        st.warning("Achtung: Löschvorgänge können nicht rückgängig gemacht werden.")
-        
         # Einzelnen Kontakt löschen
-        del_name = st.selectbox("Kontakt endgültig löschen", ["---"] + sorted(df["Name"].tolist()))
-        if del_name != "---":
-            if st.button(f"❌ {del_name} jetzt löschen"):
-                updated_df = df[df["Name"] != del_name]
-                save_to_github(updated_df, file_sha, f"Gelöscht: {del_name}")
-                st.success(f"{del_name} wurde entfernt.")
-                st.rerun()
+        options_del = [f"{r['Firma']} | {r['Name']}" for i, r in df.iterrows()]
+        del_idx = st.selectbox("Kontakt endgültig löschen", range(len(options_del)), format_func=lambda x: options_del[x])
+        
+        if st.button("❌ Markierten Kontakt löschen"):
+            updated_df = df.drop(df.index[del_idx])
+            save_to_github(updated_df, file_sha, "Kontakt gelöscht")
+            st.success("Gelöscht.")
+            st.rerun()
         
         st.divider()
-        # Alles löschen
         if st.button("🚨 GESAMTE DATENBANK LEEREN"):
-            save_to_github(pd.DataFrame(columns=["Name", "Email", "Handy", "Büro", "Privat"]), file_sha, "Datenbank geleert")
+            save_to_github(pd.DataFrame(columns=["Name", "Firma", "Email", "Handy", "Büro", "Privat"]), file_sha, "Datenbank geleert")
             st.rerun()
