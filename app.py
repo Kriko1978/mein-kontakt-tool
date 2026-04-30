@@ -53,11 +53,13 @@ def save_to_github(df, sha, message="Update"):
         repo.create_file(FILE_PATH, "Initial", csv_string)
 
 def create_vcard(df):
+    """Erstellt vCard Format optimiert für Apple iPhone (UTF-8)"""
     vcard_content = ""
     for _, row in df.iterrows():
         vcard_content += "BEGIN:VCARD\nVERSION:3.0\n"
-        vcard_content += f"FN:{row['Name']}\n"
-        if row['Firma']: vcard_content += f"ORG:{row['Firma']}\n"
+        # CHARSET=UTF-8 ist wichtig für Umlaute auf dem iPhone
+        vcard_content += f"FN;CHARSET=UTF-8:{row['Name']}\n"
+        if row['Firma']: vcard_content += f"ORG;CHARSET=UTF-8:{row['Firma']}\n"
         if row['Email']: vcard_content += f"EMAIL:{row['Email']}\n"
         if row['Handy']: vcard_content += f"TEL;TYPE=CELL:{row['Handy']}\n"
         if row['Büro']:  vcard_content += f"TEL;TYPE=WORK:{row['Büro']}\n"
@@ -94,7 +96,13 @@ with tab_view:
         col1, col2 = st.columns(2)
         with col1:
             vcf_data = create_vcard(df)
-            st.download_button("📲 Alle als vCard (iPhone/Outlook)", vcf_data, "Kontakte_Schuessler.vcf", "text/vcard")
+            # MIME-Type x-vcard hilft dem iPhone beim Erkennen der Datei
+            st.download_button(
+                label="📲 Alle als vCard (iPhone/Outlook)",
+                data=vcf_data,
+                file_name="Kontakte_Schuessler.vcf",
+                mime="text/x-vcard"
+            )
         with col2:
             csv_data = df.to_csv(index=False).encode('utf-8')
             st.download_button("📥 CSV Backup", csv_data, "kontakte_backup.csv", "text/csv")
@@ -129,13 +137,14 @@ with tab_add:
             else:
                 st.error("Bitte mindestens Name oder Firma angeben!")
 
-# --- TAB 3: BEARBEITEN (JETZT MIT PASSWORT) ---
+# --- TAB 3: BEARBEITEN (GESICHERT) ---
 with tab_edit:
     st.subheader("Eintrag bearbeiten")
-    pw_edit = st.text_input("Passwort zum Bearbeiten erforderlich", type="password", key="pw_edit")
+    pw_edit = st.text_input("Passwort erforderlich", type="password", key="pw_edit")
     
     if pw_edit == "erkenschwick":
         if not df.empty:
+            # Dropdown-Vorschau: Firma - Name
             options = []
             for i, r in df.iterrows():
                 label = f"{r['Firma']} - {r['Name']}" if r['Firma'] and r['Name'] else r['Firma'] or r['Name']
@@ -154,6 +163,7 @@ with tab_edit:
                 e_p = c3.text_input("Privat", value=current_data["Privat"])
                 
                 if st.form_submit_button("Änderungen speichern"):
+                    # Alten Index entfernen, neuen Stand einfügen
                     updated_df = df.drop(df.index[selected_index]).copy()
                     new_entry = pd.DataFrame([{
                         "Name": e_name, "Firma": e_firma, "Email": e_email, 
@@ -170,7 +180,7 @@ with tab_edit:
     elif pw_edit != "":
         st.error("Falsches Passwort!")
 
-# --- TAB 4: ADMIN ---
+# --- TAB 4: ADMIN / LÖSCHEN (GESICHERT) ---
 with tab_admin:
     st.subheader("Gefahrenbereich")
     pw_admin = st.text_input("Admin-Passwort zum Löschen", type="password", key="pw_admin")
